@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>美文字＆標準すうじ・かな 練習アプリ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    canvas { touch-action: none; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .badge-dot { position:absolute; top:2px; right:2px; width:8px; height:8px; border-radius:9999px; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col items-center justify-between p-3 select-none">
+
+  <!-- ヘッダー / モード・言語切り替え -->
+  <header class="w-full max-w-sm flex justify-between items-center bg-white p-2.5 rounded-xl shadow-sm border border-slate-200 gap-1">
+    <button id="btn-lang" class="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center gap-1">
+      🌐 <span id="lang-label">JP</span>
+    </button>
+    <div class="flex gap-1">
+      <button id="btn-num" class="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold">123</button>
+      <button id="btn-hira" class="px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">あ</button>
+      <button id="btn-kata" class="px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">ア</button>
+    </div>
+  </header>
+
+  <!-- サブタブ（清音・濁音・拗音） -->
+  <div id="sub-tabs" class="w-full max-w-sm flex gap-1.5 mt-2">
+    <!-- JSで生成 -->
+  </div>
+
+  <!-- メイン練習エリア -->
+  <main class="w-full max-w-sm flex flex-col items-center gap-2.5 my-auto">
+
+    <!-- 書き方のアドバイスカード -->
+    <div id="notice-card" class="w-full bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-900 flex justify-between items-center min-h-[64px]">
+      <div class="pr-2">
+        <span id="ui-tip-title" class="font-bold text-amber-800 block">💡 きれいに書くポイント：</span>
+        <span id="notice-text">時計回りに丸く1筆で書ききります。</span>
+      </div>
+      <div id="compare-box" class="flex-shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-amber-200 font-serif font-bold text-base">
+      </div>
+    </div>
+
+    <!-- なぞり書きキャンバス領域 -->
+    <div class="relative w-full aspect-square bg-white rounded-2xl shadow-md border-2 border-indigo-100 overflow-hidden flex items-center justify-center">
+
+      <!-- 十字＋対角線ガイド（米字） -->
+      <svg class="absolute inset-0 w-full h-full pointer-events-none z-0" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line x1="50" y1="0" x2="50" y2="100" stroke="#e2e8f0" stroke-width="0.5" stroke-dasharray="2,2"/>
+        <line x1="0" y1="50" x2="100" y2="50" stroke="#e2e8f0" stroke-width="0.5" stroke-dasharray="2,2"/>
+        <line x1="0" y1="0" x2="100" y2="100" stroke="#eef2f7" stroke-width="0.5" stroke-dasharray="2,2"/>
+        <line x1="100" y1="0" x2="0" y2="100" stroke="#eef2f7" stroke-width="0.5" stroke-dasharray="2,2"/>
+      </svg>
+
+      <!-- 背景のなぞりガイド文字 -->
+      <span id="char-guide" class="text-[180px] text-slate-300 font-serif select-none pointer-events-none z-0 opacity-60 leading-none">0</span>
+
+      <!-- 手書きキャンバス -->
+      <canvas id="draw-canvas" class="absolute inset-0 z-10 cursor-crosshair w-full h-full"></canvas>
+
+      <!-- 練習回数・スコア表示 -->
+      <div id="stats-pill" class="absolute top-2 left-2 z-20 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 border border-slate-200 flex flex-col leading-tight">
+        <span id="stats-attempts">れんしゅう 0かい</span>
+        <span id="stats-best">さいこう —</span>
+      </div>
+
+      <!-- 採点フィードバック（オーバーレイ） -->
+      <div id="score-toast" class="absolute inset-x-2 bottom-2 z-30 hidden text-center font-bold text-sm py-1.5 rounded-lg shadow"></div>
+    </div>
+
+    <!-- ペンの太さ調整 -->
+    <div class="w-full flex items-center gap-2 px-1">
+      <span id="ui-pen-label" class="text-[10px] text-slate-500 font-bold whitespace-nowrap">ペンの太さ</span>
+      <input id="pen-width" type="range" min="6" max="24" value="14" class="w-full accent-indigo-600">
+    </div>
+
+    <!-- アクションボタン -->
+    <div class="w-full flex justify-between gap-1.5">
+      <button id="btn-back" class="flex-1 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl shadow-sm text-[11px] sm:text-xs flex items-center justify-center gap-1 active:scale-95 transition">
+        ← <span id="ui-btn-back">戻る</span>
+      </button>
+      <button id="btn-audio" class="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-sm text-[11px] sm:text-xs flex items-center justify-center gap-1 active:scale-95 transition">
+        🔊 <span id="ui-btn-audio">発音</span>
+      </button>
+      <button id="btn-next" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm text-[11px] sm:text-xs flex items-center justify-center gap-1 active:scale-95 transition">
+        <span id="ui-btn-next">次へ</span> →
+      </button>
+    </div>
+    <div class="w-full flex justify-between gap-1.5">
+      <button id="btn-clear" class="flex-1 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl shadow-sm text-[11px] sm:text-xs flex items-center justify-center gap-1 active:scale-95 transition">
+        🗑️ <span id="ui-btn-clear">消す</span>
+      </button>
+      <button id="btn-score" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm text-[11px] sm:text-xs flex items-center justify-center gap-1 active:scale-95 transition">
+        ✏️ <span id="ui-btn-score">採点する</span>
+      </button>
+    </div>
+
+    <!-- 進捗シェア -->
+    <div class="w-full bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col gap-1.5">
+      <input id="user-name" type="text" placeholder="お名前（にんい）" class="w-full text-xs px-2.5 py-2 rounded-lg border border-slate-200 outline-none focus:border-indigo-400">
+      <button id="btn-share" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-sm text-xs flex items-center justify-center gap-1 active:scale-95 transition">
+        📤 <span id="ui-btn-share">進捗をLINE WORKSに共有</span>
+      </button>
+    </div>
+
+  </main>
+
+  <!-- 全文字をフリックで選べる横スクロールバー -->
+  <footer class="w-full max-w-sm bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+    <div id="char-selector" class="flex gap-2 overflow-x-auto py-1 no-scrollbar">
+    </div>
+  </footer>
+
+  <script>
+    let currentLang = 'ja';
+    let currentMode = 'num';   // num | hira | kata
+    let currentSub = 'all';    // all | seion | daku | youon
+    let currentIndex = 0;
+    let penWidth = 14;
+
+    const uiText = {
+      ja: {
+        tipTitle: "💡 きれいに書くポイント：", audio: "発音", clear: "消す", next: "次へ", back: "戻る",
+        score: "採点する", penLabel: "ペンの太さ",
+        subSeion: "清音", subDaku: "濁音・半濁音", subYouon: "拗音・促音",
+        attempts: (n) => `れんしゅう ${n}かい`, best: (n) => n === null ? "さいこう —" : `さいこう ${n}てん`,
+        scoreMsgGood: "とても読みやすいです！", scoreMsgOk: "だいたい合っています。もう少し練習しましょう。", scoreMsgBad: "ガイドとズレています。ゆっくりなぞってみましょう。",
+        scoreHint: "（めやすのスコアです）",
+        shareBtn: "進捗をLINE WORKSに共有", shareTitle: "なぞり書き練習 進捗レポート", shareFallback: "この端末は直接共有に対応していないため、画像を保存しました。LINE WORKSに手動で添付してください。", shareNoData: "まだ練習記録がありません。先に何文字か練習してください。"
+      },
+      en: {
+        tipTitle: "💡 Writing Tip:", audio: "Audio", clear: "Clear", next: "Next", back: "Back",
+        score: "Check", penLabel: "Pen size",
+        subSeion: "Basic", subDaku: "Voiced", subYouon: "Contracted",
+        attempts: (n) => `${n} attempts`, best: (n) => n === null ? "Best —" : `Best ${n}%`,
+        scoreMsgGood: "Very readable, nice work!", scoreMsgOk: "Close, but keep practicing.", scoreMsgBad: "Off from the guide — try tracing slowly.",
+        scoreHint: "(approximate score)",
+        shareBtn: "Share progress to LINE WORKS", shareTitle: "Handwriting Practice Report", shareFallback: "Direct sharing isn't supported on this device — the image was saved instead. Please attach it in LINE WORKS manually.", shareNoData: "No practice records yet. Practice a few characters first."
+      }
+    };
+
+    // ===== 数字 0〜9 =====
+    const numData = [
+      { char: "0", notice_ja: "時計回りに1筆で丸く書きます。", notice_en: "Draw smoothly in one continuous clockwise loop.", bad: "Ø", good: "0" },
+      { char: "1", notice_ja: "上のフック（かぎ）をつけず、まっすぐ書きます。", notice_en: "Draw a simple straight line without top hooks.", bad: "1(フック)", good: "1" },
+      { char: "2", notice_ja: "上の丸みをきれいにつくり、下の横線を平らに引きます。", notice_en: "Make a neat curve at top and flat line at bottom.", bad: "", good: "2" },
+      { char: "3", notice_ja: "2つの丸みを同じ大きさに揃えて書きます。", notice_en: "Keep the top and bottom loops equal in size.", bad: "", good: "3" },
+      { char: "4", notice_ja: "上の交差部分をつき出さず、すっきり書きます。", bad: "4(交差)", good: "4", notice_en: "Keep the top vertical line clean without crossing." },
+      { char: "5", notice_ja: "1画目の縦線と丸み、2画目の上の横線を分けて書きます。", notice_en: "Start with vertical down & loop, then add top line.", bad: "", good: "5" },
+      { char: "6", notice_ja: "上から斜めに下ろし、下の丸みをきれいに閉じます。", notice_en: "Curve down gently and close the bottom loop neatly.", bad: "", good: "6" },
+      { char: "7", notice_ja: "真ん中の横棒は書かず、シンプルな2段階の線で書きます。", notice_en: "Draw only two simple lines without a middle dash.", bad: "7(横棒)", good: "7" },
+      { char: "8", notice_ja: "上の丸を少し小さめ、下の丸を大きめに書きます。", notice_en: "Make the top loop slightly smaller than the bottom.", bad: "", good: "8" },
+      { char: "9", notice_ja: "上の丸をしっかり閉じてから、下へまっすぐ伸ばします。", notice_en: "Close top loop completely before bringing line down.", bad: "", good: "9" }
+    ];
+
+    // ===== ひらがな／カタカナ：清音 =====
+    const hiraSeion = ["あ","い","う","え","お","か","き","く","け","こ","さ","し","す","せ","そ","た","ち","つ","て","と","な","に","ぬ","ね","の","は","ひ","ふ","へ","ほ","ま","み","む","め","も","や","ゆ","よ","ら","り","る","れ","ろ","わ","を","ん"];
+    const kataSeion = ["ア","イ","ウ","エ","オ","カ","キ","ク","ケ","コ","サ","シ","ス","セ","ソ","タ","チ","ツ","テ","ト","ナ","ニ","ヌ","ネ","ノ","ハ","ヒ","フ","ヘ","ホ","マ","ミ","ム","メ","モ","ヤ","ユ","ヨ","ラ","リ","ル","レ","ロ","ワ","ヲ","ン"];
+
+    // ===== 濁音・半濁音 =====
+    const hiraDaku = ["が","ぎ","ぐ","げ","ご","ざ","じ","ず","ぜ","ぞ","だ","ぢ","づ","で","ど","ば","び","ぶ","べ","ぼ","ぱ","ぴ","ぷ","ぺ","ぽ"];
+    const kataDaku = ["ガ","ギ","グ","ゲ","ゴ","ザ","ジ","ズ","ゼ","ゾ","ダ","ヂ","ヅ","デ","ド","バ","ビ","ブ","ベ","ボ","パ","ピ","プ","ペ","ポ"];
+
+    // ===== 拗音・促音・長音 =====
+    const hiraYouon = ["きゃ","きゅ","きょ","しゃ","しゅ","しょ","ちゃ","ちゅ","ちょ","にゃ","にゅ","にょ","ひゃ","ひゅ","ひょ","みゃ","みゅ","みょ","りゃ","りゅ","りょ","ぎゃ","ぎゅ","ぎょ","じゃ","じゅ","じょ","びゃ","びゅ","びょ","ぴゃ","ぴゅ","ぴょ","っ"];
+    const kataYouon = ["キャ","キュ","キョ","シャ","シュ","ショ","チャ","チュ","チョ","ニャ","ニュ","ニョ","ヒャ","ヒュ","ヒョ","ミャ","ミュ","ミョ","リャ","リュ","リョ","ギャ","ギュ","ギョ","ジャ","ジュ","ジョ","ビャ","ビュ","ビョ","ピャ","ピュ","ピョ","ッ","ー"];
+
+    function makeItems(chars, jaFn, enFn) {
+      return chars.map(c => ({ char: c, notice_ja: jaFn(c), notice_en: enFn(c), bad: "", good: c }));
+    }
+
+    const dataset = {
+      num: { all: numData },
+      hira: {
+        seion: makeItems(hiraSeion, c => `「${c}」のバランスを意識して書きましょう。`, c => `Trace "${c}" carefully following the strokes.`),
+        daku: makeItems(hiraDaku, c => `濁点・半濁点の位置を右上にそろえて書きます。`, c => `Keep the dakuten/handakuten marks aligned to the upper right.`),
+        youon: makeItems(hiraYouon, c => c === "っ" ? `小さい「っ」は本来の大きさの半分ほどにします。` : `小さい「ゃゅょ」を右下に小さく書きます。`, c => c === "っ" ? `Write small "っ" about half the normal size.` : `Write the small "ゃゅょ" clearly smaller, tucked to the lower right.`)
+      },
+      kata: {
+        seion: makeItems(kataSeion, c => `「${c}」のハネ・ハライに気をつけましょう。`, c => `Pay attention to sharp turns and releases in "${c}".`),
+        daku: makeItems(kataDaku, c => `濁点・半濁点の位置を右上にそろえて書きます。`, c => `Keep the dakuten/handakuten marks aligned to the upper right.`),
+        youon: makeItems(kataYouon, c => c === "ッ" ? `小さい「ッ」は本来の大きさの半分ほどにします。` : (c === "ー" ? `長音「ー」はまっすぐ横に1本、伸ばして書きます。` : `小さい「ャュョ」を右下に小さく書きます。`), c => c === "ッ" ? `Write small "ッ" about half the normal size.` : (c === "ー" ? `Draw the long-vowel mark as one straight horizontal stroke.` : `Write the small "ャュョ" clearly smaller, tucked to the lower right.`))
+      }
+    };
+
+    function currentList() {
+      return dataset[currentMode][currentSub] || dataset[currentMode]['all'] || dataset[currentMode][Object.keys(dataset[currentMode])[0]];
+    }
+
+    // ===== 進捗の保存（localStorage） =====
+    function loadProgress() {
+      try { return JSON.parse(localStorage.getItem('kaki_progress') || '{}'); } catch (e) { return {}; }
+    }
+    function saveProgress(p) { localStorage.setItem('kaki_progress', JSON.stringify(p)); }
+    function getRecord(char) {
+      const p = loadProgress();
+      return p[char] || { attempts: 0, best: null };
+    }
+    function recordAttempt(char, score) {
+      const p = loadProgress();
+      const rec = p[char] || { attempts: 0, best: null };
+      rec.attempts += 1;
+      rec.best = rec.best === null ? score : Math.max(rec.best, score);
+      p[char] = rec;
+      saveProgress(p);
+      return rec;
+    }
+
+    // ===== 進捗の集計（すうじ／ひらがな／カタカナ別） =====
+    function aggregateStats() {
+      const progress = loadProgress();
+      const groups = {
+        num: dataset.num.all,
+        hira: [...dataset.hira.seion, ...dataset.hira.daku, ...dataset.hira.youon],
+        kata: [...dataset.kata.seion, ...dataset.kata.daku, ...dataset.kata.youon]
+      };
+      const result = {};
+      Object.keys(groups).forEach(key => {
+        const list = groups[key];
+        let practiced = 0, mastered = 0, totalAttempts = 0, scoreSum = 0, scoreCount = 0;
+        list.forEach(item => {
+          const rec = progress[item.char];
+          if (rec && rec.attempts > 0) {
+            practiced++;
+            totalAttempts += rec.attempts;
+            if (rec.best !== null) {
+              scoreSum += rec.best;
+              scoreCount++;
+              if (rec.best >= 70) mastered++;
+            }
+          }
+        });
+        result[key] = {
+          total: list.length, practiced, mastered, totalAttempts,
+          avgBest: scoreCount ? Math.round(scoreSum / scoreCount) : null
+        };
+      });
+      return result;
+    }
+
+    function hasAnyProgress(stats) {
+      return Object.values(stats).some(s => s.practiced > 0);
+    }
+
+    // ===== 角丸四角形（ネイティブroundRect非対応端末への保険） =====
+    function roundRectPath(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.arcTo(x + w, y, x + w, y + h, r);
+      c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r);
+      c.arcTo(x, y, x + w, y, r);
+      c.closePath();
+    }
+
+    // ===== 進捗レポート画像の生成 =====
+    function buildProgressCard() {
+      const stats = aggregateStats();
+      const t = uiText[currentLang];
+      const name = document.getElementById('user-name').value.trim();
+      const dateStr = new Date().toLocaleDateString(currentLang === 'ja' ? 'ja-JP' : 'en-US');
+
+      const W = 800, H = 940;
+      const cvs = document.createElement('canvas');
+      cvs.width = W; cvs.height = H;
+      const c = cvs.getContext('2d');
+
+      c.fillStyle = '#f1f5f9';
+      c.fillRect(0, 0, W, H);
+
+      const grad = c.createLinearGradient(0, 0, W, 0);
+      grad.addColorStop(0, '#4338ca');
+      grad.addColorStop(1, '#6366f1');
+      c.fillStyle = grad;
+      c.fillRect(0, 0, W, 150);
+
+      c.textBaseline = 'top';
+      c.fillStyle = '#ffffff';
+      c.font = 'bold 36px sans-serif';
+      c.fillText(t.shareTitle, 40, 38);
+      c.font = '20px sans-serif';
+      c.fillStyle = 'rgba(255,255,255,0.85)';
+      c.fillText(dateStr, 40, 92);
+      if (name) {
+        c.textAlign = 'right';
+        c.font = 'bold 24px sans-serif';
+        c.fillStyle = '#ffffff';
+        c.fillText(name + (currentLang === 'ja' ? ' さん' : ''), W - 40, 92);
+        c.textAlign = 'left';
+      }
+
+      const panels = [
+        { key: 'num', label: currentLang === 'ja' ? 'すうじ（0-9）' : 'Numbers (0-9)', color: '#4f46e5' },
+        { key: 'hira', label: currentLang === 'ja' ? 'ひらがな' : 'Hiragana', color: '#059669' },
+        { key: 'kata', label: currentLang === 'ja' ? 'カタカナ' : 'Katakana', color: '#d97706' }
+      ];
+
+      let y = 190;
+      panels.forEach(p => {
+        const s = stats[p.key];
+
+        roundRectPath(c, 40, y, W - 80, 210, 20);
+        c.fillStyle = '#ffffff';
+        c.fill();
+
+        c.fillStyle = '#0f172a';
+        c.font = 'bold 26px sans-serif';
+        c.fillText(p.label, 70, y + 28);
+
+        const barX = 70, barY = y + 78, barW = W - 220, barH = 22;
+        roundRectPath(c, barX, barY, barW, barH, 11);
+        c.fillStyle = '#e2e8f0';
+        c.fill();
+        const ratio = s.total ? s.practiced / s.total : 0;
+        roundRectPath(c, barX, barY, Math.max(ratio > 0 ? barH : 0, barW * ratio), barH, 11);
+        c.fillStyle = p.color;
+        c.fill();
+
+        c.fillStyle = '#334155';
+        c.font = '20px sans-serif';
+        const lbl1 = currentLang === 'ja' ? `練習済み ${s.practiced} / ${s.total} 文字` : `Practiced ${s.practiced} / ${s.total}`;
+        const lbl2 = currentLang === 'ja' ? `のべ ${s.totalAttempts} 回` : `${s.totalAttempts} attempts`;
+        const lbl3 = currentLang === 'ja' ? `平均スコア ${s.avgBest !== null ? s.avgBest + '%' : '—'}` : `Avg score ${s.avgBest !== null ? s.avgBest + '%' : '—'}`;
+        const lbl4 = currentLang === 'ja' ? `習熟(70%以上) ${s.mastered} 文字` : `Mastered (≥70%) ${s.mastered}`;
+        c.fillText(lbl1, barX, barY + 36);
+        c.fillText(lbl2, barX, barY + 64);
+        c.fillText(lbl3, barX, barY + 92);
+        c.fillText(lbl4, barX + 320, barY + 92);
+
+        y += 235;
+      });
+
+      c.fillStyle = '#94a3b8';
+      c.font = '16px sans-serif';
+      c.fillText('Yoshida EdTech Works ・ EdTech Gabay', 40, H - 34);
+
+      return { canvas: cvs, hasData: hasAnyProgress(stats) };
+    }
+
+    async function shareProgress() {
+      const t = uiText[currentLang];
+      const { canvas: cardCanvas, hasData } = buildProgressCard();
+      if (!hasData) { alert(t.shareNoData); return; }
+
+      cardCanvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const dateTag = new Date().toISOString().slice(0, 10);
+        const file = new File([blob], `nazori-progress-${dateTag}.png`, { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: t.shareTitle });
+          } catch (err) {
+            // ユーザーがキャンセルした場合は何もしない
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          alert(t.shareFallback);
+        }
+      }, 'image/png');
+    }
+
+    // ===== DOM要素 =====
+    const guideEl = document.getElementById('char-guide');
+    const noticeText = document.getElementById('notice-text');
+    const compareBox = document.getElementById('compare-box');
+    const canvas = document.getElementById('draw-canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreToast = document.getElementById('score-toast');
+    const statsAttempts = document.getElementById('stats-attempts');
+    const statsBest = document.getElementById('stats-best');
+    let isDrawing = false;
+
+    // ===== キャンバス（DPRスケール累積バグ修正済み） =====
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // 前回のscaleをリセットしてから再適用
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = penWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      scoreToast.classList.add('hidden');
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      isDrawing = true;
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!isDrawing) return;
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    });
+    window.addEventListener('pointerup', () => isDrawing = false);
+
+    document.getElementById('pen-width').addEventListener('input', (e) => {
+      penWidth = Number(e.target.value);
+      ctx.lineWidth = penWidth;
+    });
+
+    // ===== 音声再生 =====
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        const uttr = new SpeechSynthesisUtterance(text);
+        uttr.lang = 'ja-JP';
+        uttr.rate = 0.8;
+        window.speechSynthesis.speak(uttr);
+      }
+    }
+
+    // ===== 参考スコア計算（ガイド文字とインクの重なり具合のめやす） =====
+    function computeMatchScore(char) {
+      const w = canvas.width, h = canvas.height;
+      const off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      const octx = off.getContext('2d');
+      octx.fillStyle = '#000';
+      octx.textAlign = 'center';
+      octx.textBaseline = 'middle';
+      const fontPx = h * 0.5;
+      octx.font = `${fontPx}px serif`;
+      octx.fillText(char, w / 2, h / 2 + fontPx * 0.04);
+
+      const guideData = octx.getImageData(0, 0, w, h).data;
+      const userData = ctx.getImageData(0, 0, w, h).data;
+
+      const grid = 28;
+      const cellW = Math.max(1, Math.floor(w / grid));
+      const cellH = Math.max(1, Math.floor(h / grid));
+      let guideCells = 0, userCells = 0, overlapCells = 0;
+
+      for (let gy = 0; gy < grid; gy++) {
+        for (let gx = 0; gx < grid; gx++) {
+          let gInk = false, uInk = false;
+          for (let sy = 0; sy < cellH; sy += Math.max(1, Math.floor(cellH / 2))) {
+            for (let sx = 0; sx < cellW; sx += Math.max(1, Math.floor(cellW / 2))) {
+              const px = gx * cellW + sx, py = gy * cellH + sy;
+              if (px >= w || py >= h) continue;
+              const idx = (py * w + px) * 4;
+              if (guideData[idx + 3] > 80) gInk = true;
+              if (userData[idx + 3] > 80) uInk = true;
+            }
+          }
+          if (gInk) guideCells++;
+          if (uInk) userCells++;
+          if (gInk && uInk) overlapCells++;
+        }
+      }
+      if (userCells === 0) return 0;
+      const recall = guideCells ? overlapCells / guideCells : 0;
+      const precision = userCells ? overlapCells / userCells : 0;
+      const score = Math.round((recall * 0.6 + precision * 0.4) * 100);
+      return Math.max(0, Math.min(100, score));
+    }
+
+    function runScoring() {
+      const item = currentList()[currentIndex];
+      const score = computeMatchScore(item.char);
+      const rec = recordAttempt(item.char, score);
+      showScoreToast(score);
+      updateStatsPill(rec);
+      renderSelector();
+    }
+
+    function showScoreToast(score) {
+      const t = uiText[currentLang];
+      let msg, cls;
+      if (score >= 70) { msg = t.scoreMsgGood; cls = 'bg-emerald-500 text-white'; }
+      else if (score >= 45) { msg = t.scoreMsgOk; cls = 'bg-amber-500 text-white'; }
+      else { msg = t.scoreMsgBad; cls = 'bg-rose-500 text-white'; }
+      scoreToast.className = `absolute inset-x-2 bottom-2 z-30 text-center font-bold text-xs py-1.5 rounded-lg shadow ${cls}`;
+      scoreToast.innerHTML = `${score}% ・ ${msg} <span class="font-normal opacity-80">${t.scoreHint}</span>`;
+    }
+
+    function updateStatsPill(rec) {
+      const t = uiText[currentLang];
+      statsAttempts.innerText = t.attempts(rec.attempts);
+      statsBest.innerText = t.best(rec.best);
+    }
+
+    // ===== 表示更新 =====
+    function updateDisplay() {
+      const list = currentList();
+      if (currentIndex >= list.length) currentIndex = 0;
+      const item = list[currentIndex];
+      guideEl.innerText = item.char;
+
+      noticeText.innerText = currentLang === 'ja' ? item.notice_ja : item.notice_en;
+      document.getElementById('ui-tip-title').innerText = uiText[currentLang].tipTitle;
+      document.getElementById('ui-btn-audio').innerText = uiText[currentLang].audio;
+      document.getElementById('ui-btn-clear').innerText = uiText[currentLang].clear;
+      document.getElementById('ui-btn-next').innerText = uiText[currentLang].next;
+      document.getElementById('ui-btn-back').innerText = uiText[currentLang].back;
+      document.getElementById('ui-btn-score').innerText = uiText[currentLang].score;
+      document.getElementById('ui-pen-label').innerText = uiText[currentLang].penLabel;
+      document.getElementById('ui-btn-share').innerText = uiText[currentLang].shareBtn;
+      document.getElementById('lang-label').innerText = currentLang === 'ja' ? 'JP' : 'EN';
+
+      if (item.bad) {
+        compareBox.innerHTML = `<span class="text-rose-500 line-through text-xs">${item.bad}</span> <span class="text-slate-400 text-xs">➔</span> <span class="text-emerald-600">${item.good}</span>`;
+      } else {
+        compareBox.innerHTML = `<span class="text-emerald-600">${item.good}</span>`;
+      }
+      compareBox.style.display = 'flex';
+
+      updateStatsPill(getRecord(item.char));
+      clearCanvas();
+      renderSubTabs();
+      renderSelector();
+    }
+
+    // ===== サブタブ（清音・濁音・拗音） =====
+    function renderSubTabs() {
+      const container = document.getElementById('sub-tabs');
+      container.innerHTML = '';
+      if (currentMode === 'num') { container.classList.add('hidden'); return; }
+      container.classList.remove('hidden');
+      const t = uiText[currentLang];
+      const subs = [
+        { key: 'seion', label: t.subSeion },
+        { key: 'daku', label: t.subDaku },
+        { key: 'youon', label: t.subYouon }
+      ];
+      subs.forEach(s => {
+        const btn = document.createElement('button');
+        const active = s.key === currentSub;
+        btn.className = `flex-1 py-1.5 rounded-lg text-[11px] font-bold border transition ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200'}`;
+        btn.innerText = s.label;
+        btn.onclick = () => { currentSub = s.key; currentIndex = 0; updateDisplay(); };
+        container.appendChild(btn);
+      });
+    }
+
+    // ===== 文字選択バー（練習回数バッジ付き） =====
+    function renderSelector() {
+      const container = document.getElementById('char-selector');
+      container.innerHTML = '';
+      const list = currentList();
+
+      list.forEach((item, idx) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative flex-shrink-0';
+
+        const btn = document.createElement('button');
+        const isSelected = idx === currentIndex;
+        btn.id = `char-btn-${idx}`;
+        btn.className = `w-11 h-11 font-bold rounded-xl border text-base flex items-center justify-center transition ${
+          isSelected
+            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm scale-105'
+            : 'bg-slate-50 text-slate-700 border-slate-200 active:bg-slate-100'
+        }`;
+        btn.innerText = item.char;
+        btn.onclick = () => {
+          currentIndex = idx;
+          updateDisplay();
+          speak(item.char);
+        };
+        wrap.appendChild(btn);
+
+        const rec = getRecord(item.char);
+        if (rec.attempts > 0) {
+          const dot = document.createElement('span');
+          const mastered = rec.best !== null && rec.best >= 70;
+          dot.className = `badge-dot ${mastered ? 'bg-emerald-500' : 'bg-amber-400'} border border-white`;
+          wrap.appendChild(dot);
+        }
+        container.appendChild(wrap);
+      });
+
+      const activeBtn = document.getElementById(`char-btn-${currentIndex}`);
+      if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+
+    // ===== ボタンイベント =====
+    document.getElementById('btn-clear').onclick = clearCanvas;
+    document.getElementById('btn-audio').onclick = () => speak(currentList()[currentIndex].char);
+    document.getElementById('btn-score').onclick = runScoring;
+    document.getElementById('btn-next').onclick = () => {
+      currentIndex = (currentIndex + 1) % currentList().length;
+      updateDisplay();
+    };
+    document.getElementById('btn-back').onclick = () => {
+      const len = currentList().length;
+      currentIndex = (currentIndex - 1 + len) % len;
+      updateDisplay();
+    };
+
+    document.getElementById('btn-lang').onclick = () => {
+      currentLang = currentLang === 'ja' ? 'en' : 'ja';
+      updateDisplay();
+    };
+
+    const modeBtns = {
+      num: document.getElementById('btn-num'),
+      hira: document.getElementById('btn-hira'),
+      kata: document.getElementById('btn-kata')
+    };
+    Object.keys(modeBtns).forEach(mode => {
+      modeBtns[mode].onclick = () => {
+        currentMode = mode;
+        currentSub = mode === 'num' ? 'all' : 'seion';
+        currentIndex = 0;
+        Object.keys(modeBtns).forEach(m => {
+          modeBtns[m].className = m === mode
+            ? 'px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold'
+            : 'px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold';
+        });
+        updateDisplay();
+      };
+    });
+
+    document.getElementById('btn-share').onclick = shareProgress;
+
+    const nameInput = document.getElementById('user-name');
+    nameInput.value = localStorage.getItem('kaki_username') || '';
+    nameInput.addEventListener('change', () => {
+      localStorage.setItem('kaki_username', nameInput.value.trim());
+    });
+
+    // ===== 初期化 =====
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(() => {
+      resizeCanvas();
+      updateDisplay();
+    }, 100);
+  </script>
+</body>
+</html>
